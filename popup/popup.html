@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Keyword Filter for Reddit</h1>
+      <label class="toggle-switch">
+        <input type="checkbox" id="filter-toggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <p id="disabled-notice" class="disabled-notice hidden">Filtering is disabled. Refresh the page after enabling.</p>
+
+    <!-- PROFILE LIST VIEW -->
+    <div id="profile-list-view">
+      <div class="profiles-section">
+        <h2>Profiles</h2>
+        <ul id="profiles-list"></ul>
+        <p id="no-profiles-message" class="empty hidden">No profiles created yet</p>
+      </div>
+
+      <div class="profile-actions">
+        <button id="add-profile-btn" type="button">
+          <span class="btn-icon">+</span> New Profile
+        </button>
+        <button id="import-profile-btn" type="button" class="secondary">
+          Import Profile
+        </button>
+      </div>
+
+      <div class="stats-section">
+        <h2>Statistics</h2>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-value" id="session-blocked">0</span>
+            <span class="stat-label">This Session</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="total-blocked">0</span>
+            <span class="stat-label">Total</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="active-keywords-info">
+        <span id="active-keywords-count">0</span> keywords active
+      </div>
+
+      <div class="actions">
+        <button id="reset-stats-btn" type="button" class="secondary">Reset Statistics</button>
+      </div>
+    </div>
+
+    <!-- PROFILE EDIT VIEW -->
+    <div id="profile-edit-view" class="hidden">
+      <div class="edit-header">
+        <button id="back-btn" type="button" class="icon-btn" title="Back">&larr;</button>
+        <input type="text" id="profile-name-input" placeholder="Profile name">
+        <button id="export-profile-btn" type="button" class="icon-btn" title="Export to clipboard">&#x2197;</button>
+      </div>
+
+      <div class="profile-toggle-row">
+        <span>Profile enabled</span>
+        <label class="toggle-switch small">
+          <input type="checkbox" id="profile-enabled-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="input-group">
+        <input type="text" id="keyword-input" placeholder="Enter keyword...">
+        <button id="add-keyword-btn" type="button">Add</button>
+      </div>
+
+      <div class="keywords-section">
+        <h2>Keywords in this profile</h2>
+        <ul id="keywords-list"></ul>
+        <p id="empty-message" class="empty hidden">No keywords added yet</p>
+      </div>
+
+      <div class="stats">
+        <span id="keyword-count">0</span> keywords in profile
+      </div>
+
+      <div class="actions">
+        <button id="delete-profile-btn" type="button" class="danger">Delete Profile</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Import modal -->
+  <div id="import-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Import Profile</h3>
+        <button id="close-modal-btn" type="button" class="icon-btn">&times;</button>
+      </div>
+      <p class="modal-description">Paste the exported profile JSON below:</p>
+      <textarea id="import-textarea" placeholder='{"type":"reddit-keyword-filter-profile",...}'></textarea>
+      <div class="modal-actions">
+        <button id="cancel-import-btn" type="button" class="secondary">Cancel</button>
+        <button id="confirm-import-btn" type="button">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
