@@ -243,7 +243,13 @@
 
     const name = profileNameInput.value.trim() || 'New Profile';
     await StorageHelper.updateProfile(editingProfileId, { name });
-    profiles[editingProfileId].name = name;
+
+    // Storage may have renamed it (e.g. "Name (1)") to avoid a duplicate
+    const saved = await StorageHelper.getProfile(editingProfileId);
+    if (saved) {
+      profiles[editingProfileId].name = saved.name;
+      profileNameInput.value = saved.name;
+    }
   }
 
   // Toggle profile enabled

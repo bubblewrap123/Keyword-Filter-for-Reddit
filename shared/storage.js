@@ -34,6 +34,10 @@ const StorageHelper = {
     if (trimmed.length > this.MAX_KEYWORD_LENGTH) {
       return { valid: false, error: `Keyword exceeds maximum length of ${this.MAX_KEYWORD_LENGTH} characters` };
     }
+    // A keyword made only of wildcards would match every post
+    if (!/[^*\s]/.test(trimmed)) {
+      return { valid: false, error: 'Keyword must contain more than wildcards' };
+    }
     return { valid: true, keyword: trimmed };
   },
 
@@ -256,6 +260,7 @@ const StorageHelper = {
       for (const profile of Object.values(profiles)) {
         if (profile.enabled) {
           for (const keyword of profile.keywords) {
+            if (!this.validateKeyword(keyword).valid) continue;
             const lower = keyword.toLowerCase();
             if (!seen.has(lower)) {
               seen.add(lower);

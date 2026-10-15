@@ -3,7 +3,15 @@
 (function() {
   'use strict';
 
+  const HIDDEN_ATTR = 'data-kf-hidden';
+  const COUNTED_ATTR = 'data-kf-counted';
+  const WORD_CHAR = '[\\p{L}\\p{M}\\p{N}_]';
+  // Scripts written without spaces between words, where whole-word matching can't work
+  const NO_WORD_SPACING = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u;
+  const POST_ID_PATTERN = /\/comments\/([a-z0-9]+)/i;
+
   let keywords = [];
+  let keywordPatterns = [];
   let isOldReddit = false;
   let filterTimeout = null;
   let sessionBlocked = 0;
@@ -39,11 +47,30 @@
     }
   }
 
+  function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  // Turn a keyword into a case-insensitive regex that matches whole words only.
+  // "*" is a wildcard for partial matches: "AI" matches "AI's" but not "said",
+  // "crypto*" matches "cryptocurrency", "*coin" matches "bitcoin".
+  function compileKeyword(keyword) {
+    const body = keyword.trim().split(/\s+/)
+      .map(word => word.split('*').map(escapeRegExp).join(`${WORD_CHAR}*`))
+      .join('\\s+');
+
+    if (NO_WORD_SPACING.test(keyword)) {
+      return new RegExp(body, 'iu');
+    }
+    return new RegExp(`(?<!${WORD_CHAR})${body}(?!${WORD_CHAR})`, 'iu');
+  }
+
   // Load combined keywords from all active profiles
   async function loadKeywords() {
     try {
       await StorageHelper.ensureMigrated();
       keywords = await StorageHelper.getCombinedKeywords();
+      keywordPatterns = keywords.map(compileKeyword);
       return keywords;
     } catch (error) {
       console.error('Reddit Filter: Error loading keywords', error);
@@ -51,26 +78,45 @@
     }
   }
 
-  // Check if text contains any keyword (case-insensitive)
+  // Check if text contains any keyword
   function containsKeyword(text) {
-    if (!text || keywords.length === 0) return false;
-    const lowerText = text.toLowerCase();
-    return keywords.some(keyword =>
-      lowerText.includes(keyword.toLowerCase())
-    );
+    if (!text) return false;
+    return keywordPatterns.some(pattern => pattern.test(text));
+  }
+
+  function getPostId(url) {
+    return url?.match(POST_ID_PATTERN)?.[1].toLowerCase() ?? null;
+  }
+
+  // Decide whether a post should be hidden. The post you have opened is never
+  // hidden on its own page, otherwise you'd see its comments with no post above them.
+  function shouldHide(title, permalink) {
+    const currentPostId = getPostId(window.location.pathname);
+    if (currentPostId && getPostId(permalink) === currentPostId) return false;
+    return containsKeyword(title);
+  }
+
+  // Hide an element; returns 1 the first time an element is hidden so
+  // re-filtering after a profile change doesn't count the same post twice
+  function hidePost(element) {
+    element.setAttribute(HIDDEN_ATTR, '');
+    element.style.display = 'none';
+    if (element.hasAttribute(COUNTED_ATTR)) return 0;
+    element.setAttribute(COUNTED_ATTR, '');
+    return 1;
   }
 
   // Filter all visible posts
   async function filterPosts() {
-    if (!filterEnabled || keywords.length === 0) return;
+    if (!filterEnabled || keywordPatterns.length === 0) return;
 
     isOldReddit = detectRedditVersion() === 'old';
 
     let blockedCount = 0;
     if (isOldReddit) {
-      blockedCount = filterOldRedditPosts(containsKeyword);
+      blockedCount = filterOldRedditPosts(shouldHide, hidePost);
     } else {
-      blockedCount = filterNewRedditPosts(containsKeyword);
+      blockedCount = filterNewRedditPosts(shouldHide, hidePost);
     }
 
     // Update stats if any posts were blocked
@@ -90,12 +136,20 @@
     }
   }
 
-  // Reset filtered markers and re-filter
-  function resetAndRefilter() {
-    document.querySelectorAll('[data-filtered]').forEach(el => {
-      el.removeAttribute('data-filtered');
+  // Show all hidden posts and clear markers so every post gets checked again
+  function unhideAll() {
+    document.querySelectorAll(`[${HIDDEN_ATTR}]`).forEach(el => {
+      el.removeAttribute(HIDDEN_ATTR);
       el.style.display = '';
     });
+    document.querySelectorAll('[data-filtered]').forEach(el => {
+      el.removeAttribute('data-filtered');
+    });
+  }
+
+  // Reset filtered markers and re-filter
+  function resetAndRefilter() {
+    unhideAll();
     filterPosts();
   }
 
@@ -118,10 +172,13 @@
         }
       }
 
-      if (shouldFilter) {
-        // Debounce filtering to avoid excessive calls
-        clearTimeout(filterTimeout);
-        filterTimeout = setTimeout(filterPosts, 100);
+      // Throttle rather than debounce, so constant DOM churn (videos, live
+      // timestamps) can't keep pushing filtering back indefinitely
+      if (shouldFilter && !filterTimeout) {
+        filterTimeout = setTimeout(() => {
+          filterTimeout = null;
+          filterPosts();
+        }, 100);
       }
     });
 
@@ -131,20 +188,20 @@
     });
   }
 
-  // Cleanup function to disconnect observer
-  function cleanup() {
-    if (observer) {
-      observer.disconnect();
-      observer = null;
+  // Load keywords, filter the page and watch for new posts
+  async function start() {
+    await loadKeywords();
+    filterPosts();
+    if (!observer) {
+      setupObserver();
     }
-    clearTimeout(filterTimeout);
   }
 
   // Listen for storage changes (when user updates profiles in popup)
   browser.storage.onChanged.addListener(async (changes, areaName) => {
     if (areaName === 'local') {
       if (changes.profiles) {
-        keywords = await StorageHelper.getCombinedKeywords();
+        await loadKeywords();
         resetAndRefilter();
       }
 
@@ -152,12 +209,9 @@
       if (changes.filterEnabled) {
         filterEnabled = changes.filterEnabled.newValue !== false;
         if (!filterEnabled) {
-          // Show previously hidden posts
-          document.querySelectorAll('[data-filtered]').forEach(el => {
-            el.style.display = '';
-          });
+          unhideAll();
         } else {
-          filterPosts();
+          await start();
         }
       }
     }
@@ -168,12 +222,7 @@
     if (message.action === 'getSessionStats') {
       sendResponse({ sessionBlocked: sessionBlocked });
     }
-    return true;
   });
-
-  // Cleanup on page unload
-  window.addEventListener('beforeunload', cleanup);
-  window.addEventListener('pagehide', cleanup);
 
   // Initialize
   async function init() {
@@ -182,9 +231,7 @@
       console.log('Keyword Filter for Reddit: Disabled');
       return;
     }
-    await loadKeywords();
-    filterPosts();
-    setupObserver();
+    await start();
     console.log('Keyword Filter for Reddit: Initialized with', keywords.length, 'keywords from active profiles');
   }
 

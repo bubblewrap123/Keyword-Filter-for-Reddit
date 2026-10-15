@@ -1,6 +1,6 @@
 // content/new-reddit.js - Handler for New Reddit (www.reddit.com)
 
-function filterNewRedditPosts(containsKeyword) {
+function filterNewRedditPosts(shouldHide, hidePost) {
   let blockedCount = 0;
 
   // New Reddit uses shreddit-post custom elements (2024+ redesign)
@@ -15,9 +15,9 @@ function filterNewRedditPosts(containsKeyword) {
                   post.getAttribute('post-title') ||
                   '';
 
-    if (containsKeyword(title)) {
-      hideNewRedditPost(post);
-      blockedCount++;
+    if (shouldHide(title, post.getAttribute('permalink'))) {
+      // Feed posts are wrapped in an <article>; hide the wrapper so no empty slot is left
+      blockedCount += hidePost(post.closest('article') || post);
     }
   });
 
@@ -32,10 +32,10 @@ function filterNewRedditPosts(containsKeyword) {
     // Title usually in h3 or specific data-testid
     const titleElement = post.querySelector('h3, [data-testid="post-title"]');
     const title = titleElement?.textContent || '';
+    const link = post.querySelector('a[href*="/comments/"]');
 
-    if (containsKeyword(title)) {
-      hideNewRedditPost(post);
-      blockedCount++;
+    if (shouldHide(title, link?.getAttribute('href'))) {
+      blockedCount += hidePost(post);
     }
   });
 
@@ -47,37 +47,18 @@ function filterNewRedditPosts(containsKeyword) {
   articlePosts.forEach(post => {
     post.setAttribute('data-filtered', 'true');
 
-    const titleElement = post.querySelector('h3, [slot="title"], a[href*="/comments/"]');
+    // Already handled above via the post element inside it
+    if (post.querySelector('shreddit-post, [data-testid="post-container"]')) return;
+
+    // Prefer a real title element; a comments link is only a fallback
+    const link = post.querySelector('a[href*="/comments/"]');
+    const titleElement = post.querySelector('h3, [slot="title"]') || link;
     const title = titleElement?.textContent || '';
 
-    if (containsKeyword(title)) {
-      hideNewRedditPost(post);
-      blockedCount++;
+    if (shouldHide(title, link?.getAttribute('href'))) {
+      blockedCount += hidePost(post);
     }
   });
 
   return blockedCount;
-}
-
-function hideNewRedditPost(post) {
-  // Find the parent container to hide (varies by Reddit version)
-  let container = post;
-
-  // Walk up to find the full post container
-  while (container.parentElement &&
-         !container.parentElement.matches('main, #main-content, body, [data-scroller-first]')) {
-    const parent = container.parentElement;
-    // Stop if we've found a good container boundary
-    if (container.matches('shreddit-post, article, [data-testid="post-container"]')) {
-      break;
-    }
-    // Check if parent is a direct wrapper we should hide instead
-    if (parent.children.length === 1) {
-      container = parent;
-    } else {
-      break;
-    }
-  }
-
-  container.style.display = 'none';
 }

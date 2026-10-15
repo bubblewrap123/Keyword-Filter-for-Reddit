@@ -1,6 +1,6 @@
 // content/old-reddit.js - Handler for Old Reddit (old.reddit.com)
 
-function filterOldRedditPosts(containsKeyword) {
+function filterOldRedditPosts(shouldHide, hidePost) {
   // Old Reddit posts are in elements with class "thing" and "link"
   const posts = document.querySelectorAll('.thing.link:not([data-filtered])');
   let blockedCount = 0;
@@ -14,9 +14,8 @@ function filterOldRedditPosts(containsKeyword) {
 
     const title = titleElement.textContent || '';
 
-    if (containsKeyword(title)) {
-      post.style.display = 'none';
-      blockedCount++;
+    if (shouldHide(title, post.getAttribute('data-permalink'))) {
+      blockedCount += hidePost(post);
     }
   });
 
