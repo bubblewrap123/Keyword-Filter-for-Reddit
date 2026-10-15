@@ -11,6 +11,8 @@ body {
   font-size: 14px;
   min-width: 320px;
   max-width: 400px;
+  /* Firefox for Android shows the popup full screen; keep it centered on wide screens */
+  margin: 0 auto;
   color: #1a1a1b;
 }
 
@@ -176,6 +178,12 @@ h2 {
 
 .profile-actions button {
   flex: 1;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.profile-actions #add-profile-btn {
+  flex: 1.6;
 }
 
 .btn-icon {
@@ -281,14 +289,22 @@ button {
 }
 
 #add-keyword-btn,
-#add-profile-btn {
+#add-profile-btn,
+.primary {
   background-color: #ff4500;
   color: white;
 }
 
 #add-keyword-btn:hover,
-#add-profile-btn:hover {
+#add-profile-btn:hover,
+.primary:hover {
   background-color: #cc3700;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
 }
 
 .keywords-section {
@@ -484,6 +500,8 @@ button {
   padding: 16px;
   width: calc(100% - 32px);
   max-width: 350px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
@@ -531,4 +549,90 @@ button {
 
 .modal-actions button {
   min-width: 80px;
+}
+
+/* Profile selection list (import/export) */
+.select-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 1px solid #edeff1;
+  margin-bottom: 4px;
+}
+
+.selection-list {
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.selection-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.selection-list label:hover {
+  background: #f6f7f8;
+}
+
+.select-all input,
+.selection-list input {
+  accent-color: #ff4500;
+  flex-shrink: 0;
+}
+
+.selection-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.selection-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.selection-detail {
+  font-size: 12px;
+  color: #7c7c7c;
+}
+
+.confirm-message {
+  margin-bottom: 16px;
+}
+
+/* Larger touch targets on touch screens (Firefox for Android) */
+@media (pointer: coarse) {
+  button {
+    min-height: 40px;
+  }
+
+  .remove-btn {
+    padding: 8px 12px;
+  }
+
+  #keywords-list li {
+    padding: 4px 4px 4px 8px;
+  }
+
+  .select-all,
+  .selection-list label {
+    padding: 10px 8px;
+  }
+
+  .select-all input,
+  .selection-list input {
+    width: 18px;
+    height: 18px;
+  }
 }

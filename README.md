@@ -8,7 +8,7 @@ Hide Reddit posts whose titles contain keywords you specify. Create multiple pro
 - Create multiple keyword profiles (e.g., "Politics", "Spoilers", "Sports")
 - Enable/disable profiles individually
 - Works on both old.reddit.com and new Reddit
-- Import/export profiles
+- Export all or selected profiles, and choose which ones to import (e.g. to move them to another browser)
 - Statistics tracking (posts filtered per session and total)
 - Lightweight - only runs on Reddit pages
 

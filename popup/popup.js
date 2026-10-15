@@ -9,6 +9,7 @@
   const noProfilesMessage = document.getElementById('no-profiles-message');
   const addProfileBtn = document.getElementById('add-profile-btn');
   const importProfileBtn = document.getElementById('import-profile-btn');
+  const exportProfilesBtn = document.getElementById('export-profiles-btn');
   const activeKeywordsCount = document.getElementById('active-keywords-count');
   const resetStatsBtn = document.getElementById('reset-stats-btn');
   const sessionBlockedEl = document.getElementById('session-blocked');
@@ -34,15 +35,140 @@
 
   // Elements - Import modal
   const importModal = document.getElementById('import-modal');
+  const importPasteStep = document.getElementById('import-paste-step');
+  const importSelectStep = document.getElementById('import-select-step');
   const importTextarea = document.getElementById('import-textarea');
   const closeModalBtn = document.getElementById('close-modal-btn');
   const cancelImportBtn = document.getElementById('cancel-import-btn');
+  const nextImportBtn = document.getElementById('next-import-btn');
+  const backImportBtn = document.getElementById('back-import-btn');
   const confirmImportBtn = document.getElementById('confirm-import-btn');
+
+  // Elements - Confirm modal
+  const confirmModal = document.getElementById('confirm-modal');
+  const confirmMessage = document.getElementById('confirm-message');
+  const confirmOkBtn = document.getElementById('confirm-ok-btn');
+  const confirmCancelBtn = document.getElementById('confirm-cancel-btn');
+
+  // Elements - Export modal
+  const exportModal = document.getElementById('export-modal');
+  const closeExportBtn = document.getElementById('close-export-btn');
+  const cancelExportBtn = document.getElementById('cancel-export-btn');
+  const confirmExportBtn = document.getElementById('confirm-export-btn');
 
   // State
   let profiles = {};
   let editingProfileId = null;
   let isEnabled = true;
+  let importCandidates = [];
+  let exportCandidates = [];
+  let resolveConfirm = null;
+
+  // Ask for confirmation inside the popup instead of window.confirm(),
+  // so it looks and works the same on desktop and Firefox for Android
+  function showConfirm(message, confirmLabel) {
+    confirmMessage.textContent = message;
+    confirmOkBtn.textContent = confirmLabel;
+    confirmModal.classList.remove('hidden');
+    return new Promise(resolve => {
+      resolveConfirm = resolve;
+    });
+  }
+
+  function closeConfirm(result) {
+    confirmModal.classList.add('hidden');
+    if (resolveConfirm) {
+      resolveConfirm(result);
+      resolveConfirm = null;
+    }
+  }
+
+  function keywordCountText(count) {
+    return count === 1 ? '1 keyword' : `${count} keywords`;
+  }
+
+  // Profiles in display order (newest first)
+  function getSortedProfiles() {
+    return Object.values(profiles).sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  // Checkbox list of profiles with a "Select all" box. The confirm button shows
+  // how many profiles are selected and is disabled when none are.
+  function createSelectionList(list, selectAll, confirmBtn, verb) {
+    const checkboxes = () => [...list.querySelectorAll('input[type="checkbox"]')];
+
+    function getSelectedIndexes() {
+      return checkboxes()
+        .filter(box => box.checked)
+        .map(box => parseInt(box.dataset.index, 10));
+    }
+
+    function update() {
+      const total = checkboxes().length;
+      const count = getSelectedIndexes().length;
+      selectAll.checked = total > 0 && count === total;
+      selectAll.indeterminate = count > 0 && count < total;
+      confirmBtn.disabled = count === 0;
+      confirmBtn.textContent = `${verb} ${count === 1 ? '1 profile' : `${count} profiles`}`;
+    }
+
+    // items: [{ name, detail, checked }]
+    function render(items) {
+      list.innerHTML = '';
+      items.forEach((item, index) => {
+        const li = document.createElement('li');
+        const label = document.createElement('label');
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = item.checked;
+        checkbox.dataset.index = index;
+
+        const info = document.createElement('span');
+        info.className = 'selection-info';
+
+        const name = document.createElement('span');
+        name.className = 'selection-name';
+        name.textContent = item.name;
+
+        const detail = document.createElement('span');
+        detail.className = 'selection-detail';
+        detail.textContent = item.detail;
+
+        info.appendChild(name);
+        info.appendChild(detail);
+        label.appendChild(checkbox);
+        label.appendChild(info);
+        li.appendChild(label);
+        list.appendChild(li);
+      });
+      update();
+    }
+
+    list.addEventListener('change', update);
+    selectAll.addEventListener('change', () => {
+      checkboxes().forEach(box => {
+        box.checked = selectAll.checked;
+      });
+      update();
+    });
+
+    return { render, getSelectedIndexes };
+  }
+
+  const importSelection = createSelectionList(
+    document.getElementById('import-list'),
+    document.getElementById('import-select-all'),
+    confirmImportBtn,
+    'Import'
+  );
+
+  const exportSelection = createSelectionList(
+    document.getElementById('export-list'),
+    document.getElementById('export-select-all'),
+    confirmExportBtn,
+    'Copy'
+  );
 
   // Toast notification
   function showToast(message, type = 'success') {
@@ -108,15 +234,13 @@
   // Render profile list
   function renderProfiles() {
     profilesList.innerHTML = '';
-    const profileArray = Object.values(profiles);
+    const profileArray = getSortedProfiles();
+    exportProfilesBtn.disabled = profileArray.length === 0;
 
     if (profileArray.length === 0) {
       noProfilesMessage.classList.remove('hidden');
     } else {
       noProfilesMessage.classList.add('hidden');
-
-      // Sort by creation date (newest first)
-      profileArray.sort((a, b) => b.createdAt - a.createdAt);
 
       profileArray.forEach(profile => {
         const li = document.createElement('li');
@@ -133,7 +257,7 @@
 
         const keywordsCount = document.createElement('span');
         keywordsCount.className = 'profile-keywords-count';
-        keywordsCount.textContent = profile.keywords.length + ' keywords';
+        keywordsCount.textContent = keywordCountText(profile.keywords.length);
 
         profileInfo.appendChild(profileName);
         profileInfo.appendChild(keywordsCount);
@@ -231,7 +355,7 @@
   async function deleteProfile() {
     if (!editingProfileId) return;
 
-    if (confirm('Delete this profile?')) {
+    if (await showConfirm('Delete this profile?', 'Delete')) {
       await StorageHelper.deleteProfile(editingProfileId);
       showProfileListView();
     }
@@ -305,25 +429,44 @@
     }
   }
 
-  // Export profile to clipboard
-  async function exportProfile() {
-    if (!editingProfileId) return;
+  // Show export modal; all profiles are selected unless one is preselected
+  function showExportModal(preselectedId = null) {
+    exportCandidates = getSortedProfiles();
+    exportSelection.render(exportCandidates.map(profile => ({
+      name: profile.name,
+      detail: keywordCountText(profile.keywords.length),
+      checked: !preselectedId || profile.id === preselectedId
+    })));
+    exportModal.classList.remove('hidden');
+  }
 
-    const profile = profiles[editingProfileId];
-    const exportData = StorageHelper.exportProfile(profile);
+  // Hide export modal
+  function hideExportModal() {
+    exportModal.classList.add('hidden');
+    exportCandidates = [];
+  }
+
+  // Copy the selected profiles to the clipboard
+  async function exportSelectedProfiles() {
+    const selected = exportSelection.getSelectedIndexes().map(i => exportCandidates[i]);
+    if (selected.length === 0) return;
+
+    const exportData = StorageHelper.exportProfiles(selected);
 
     try {
       await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
-      showToast('Profile copied to clipboard', 'success');
+      showToast(`Copied ${selected.length === 1 ? '1 profile' : `${selected.length} profiles`} to clipboard`, 'success');
+      hideExportModal();
     } catch (error) {
-      console.error('Error exporting profile:', error);
-      showToast('Could not export profile', 'error');
+      console.error('Error exporting profiles:', error);
+      showToast('Could not export profiles', 'error');
     }
   }
 
   // Show import modal
   function showImportModal() {
     importTextarea.value = '';
+    showImportStep('paste');
     importModal.classList.remove('hidden');
     importTextarea.focus();
   }
@@ -332,14 +475,20 @@
   function hideImportModal() {
     importModal.classList.add('hidden');
     importTextarea.value = '';
+    importCandidates = [];
   }
 
-  // Import profile from textarea
-  async function importProfile() {
+  function showImportStep(step) {
+    importPasteStep.classList.toggle('hidden', step !== 'paste');
+    importSelectStep.classList.toggle('hidden', step !== 'select');
+  }
+
+  // Parse the pasted JSON and list the profiles found in it
+  function previewImport() {
     const text = importTextarea.value.trim();
 
     if (!text) {
-      showToast('Please paste a profile JSON', 'error');
+      showToast('Please paste exported profiles', 'error');
       importTextarea.focus();
       return;
     }
@@ -353,10 +502,35 @@
       return;
     }
 
-    const result = await StorageHelper.importProfile(jsonData);
+    const result = StorageHelper.parseImportData(jsonData);
+    if (!result.valid) {
+      showToast(result.error, 'error');
+      importTextarea.focus();
+      return;
+    }
+
+    importCandidates = result.profiles;
+    const existingNames = new Set(Object.values(profiles).map(p => p.name.toLowerCase()));
+
+    importSelection.render(importCandidates.map(profile => {
+      let detail = keywordCountText(profile.keywords.length);
+      if (existingNames.has(profile.name.toLowerCase())) {
+        detail += ' · name in use, will be renamed';
+      }
+      return { name: profile.name, detail, checked: true };
+    }));
+    showImportStep('select');
+  }
+
+  // Import the selected profiles
+  async function importSelectedProfiles() {
+    const selected = importSelection.getSelectedIndexes().map(i => importCandidates[i]);
+    if (selected.length === 0) return;
+
+    const result = await StorageHelper.importProfiles(selected);
 
     if (result.success) {
-      showToast('Profile imported: ' + result.profile.name, 'success');
+      showToast(`Imported ${selected.length === 1 ? '1 profile' : `${selected.length} profiles`}`, 'success');
       hideImportModal();
       loadProfiles();
     } else {
@@ -406,7 +580,7 @@
 
   // Reset stats
   async function resetStats() {
-    if (confirm('Reset all statistics?')) {
+    if (await showConfirm('Reset all statistics?', 'Reset')) {
       await StorageHelper.resetStats();
       totalBlockedEl.textContent = '0';
       sessionBlockedEl.textContent = '0';
@@ -416,15 +590,40 @@
   // Event listeners - Profile list view
   addProfileBtn.addEventListener('click', createProfile);
   importProfileBtn.addEventListener('click', showImportModal);
+  exportProfilesBtn.addEventListener('click', () => showExportModal());
   resetStatsBtn.addEventListener('click', resetStats);
 
   // Event listeners - Import modal
   closeModalBtn.addEventListener('click', hideImportModal);
   cancelImportBtn.addEventListener('click', hideImportModal);
-  confirmImportBtn.addEventListener('click', importProfile);
+  nextImportBtn.addEventListener('click', previewImport);
+  backImportBtn.addEventListener('click', () => {
+    showImportStep('paste');
+    importTextarea.focus();
+  });
+  confirmImportBtn.addEventListener('click', importSelectedProfiles);
   importModal.addEventListener('click', (e) => {
     if (e.target === importModal) {
       hideImportModal();
+    }
+  });
+
+  // Event listeners - Confirm modal
+  confirmOkBtn.addEventListener('click', () => closeConfirm(true));
+  confirmCancelBtn.addEventListener('click', () => closeConfirm(false));
+  confirmModal.addEventListener('click', (e) => {
+    if (e.target === confirmModal) {
+      closeConfirm(false);
+    }
+  });
+
+  // Event listeners - Export modal
+  closeExportBtn.addEventListener('click', hideExportModal);
+  cancelExportBtn.addEventListener('click', hideExportModal);
+  confirmExportBtn.addEventListener('click', exportSelectedProfiles);
+  exportModal.addEventListener('click', (e) => {
+    if (e.target === exportModal) {
+      hideExportModal();
     }
   });
 
@@ -454,7 +653,7 @@
 
   // Event listeners - Profile edit view
   backBtn.addEventListener('click', showProfileListView);
-  exportProfileBtn.addEventListener('click', exportProfile);
+  exportProfileBtn.addEventListener('click', () => showExportModal(editingProfileId));
   deleteProfileBtn.addEventListener('click', deleteProfile);
 
   profileNameInput.addEventListener('blur', saveProfileName);

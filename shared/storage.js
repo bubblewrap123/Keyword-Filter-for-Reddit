@@ -41,13 +41,37 @@ const StorageHelper = {
     return { valid: true, keyword: trimmed };
   },
 
-  // Check if a profile name already exists
-  async profileNameExists(name, excludeId = null) {
-    const profiles = await this.getProfiles();
-    const normalizedName = name.trim().toLowerCase();
-    return Object.values(profiles).some(p =>
-      p.name.toLowerCase() === normalizedName && p.id !== excludeId
+  // Validate keywords and drop case-insensitive duplicates
+  sanitizeKeywords(keywords) {
+    const seen = new Set();
+    const result = [];
+    for (const keyword of keywords) {
+      const validation = this.validateKeyword(keyword);
+      if (!validation.valid) continue;
+      const lower = validation.keyword.toLowerCase();
+      if (seen.has(lower)) continue;
+      seen.add(lower);
+      result.push(validation.keyword);
+    }
+    return result;
+  },
+
+  // Return the name, or "Name (1)", "Name (2)"... if another profile already uses it
+  getUniqueName(name, profiles, excludeId = null) {
+    const trimmedName = name.trim() || 'New Profile';
+    const taken = new Set(
+      Object.values(profiles)
+        .filter(p => p.id !== excludeId)
+        .map(p => p.name.toLowerCase())
     );
+
+    let finalName = trimmedName;
+    let counter = 1;
+    while (taken.has(finalName.toLowerCase())) {
+      finalName = `${trimmedName} (${counter})`;
+      counter++;
+    }
+    return finalName;
   },
 
   // Migration from old format to profiles
@@ -116,26 +140,11 @@ const StorageHelper = {
   async createProfile(name, keywords = []) {
     try {
       const profiles = await this.getProfiles();
-      const trimmedName = name.trim() || 'New Profile';
-
-      // Check for duplicate name and append number if needed
-      let finalName = trimmedName;
-      let counter = 1;
-      while (await this.profileNameExists(finalName)) {
-        finalName = `${trimmedName} (${counter})`;
-        counter++;
-      }
-
-      // Validate keywords
-      const validKeywords = keywords
-        .map(k => this.validateKeyword(k))
-        .filter(result => result.valid)
-        .map(result => result.keyword);
 
       const profile = {
         id: this.generateUUID(),
-        name: finalName,
-        keywords: validKeywords,
+        name: this.getUniqueName(name, profiles),
+        keywords: this.sanitizeKeywords(keywords),
         enabled: false,
         createdAt: Date.now()
       };
@@ -155,18 +164,7 @@ const StorageHelper = {
 
       // If updating name, check for duplicates
       if (updates.name !== undefined) {
-        const trimmedName = updates.name.trim() || 'New Profile';
-        if (await this.profileNameExists(trimmedName, profileId)) {
-          let finalName = trimmedName;
-          let counter = 1;
-          while (await this.profileNameExists(finalName, profileId)) {
-            finalName = `${trimmedName} (${counter})`;
-            counter++;
-          }
-          updates.name = finalName;
-        } else {
-          updates.name = trimmedName;
-        }
+        updates.name = this.getUniqueName(updates.name, profiles, profileId);
       }
 
       profiles[profileId] = { ...profiles[profileId], ...updates };
@@ -277,72 +275,76 @@ const StorageHelper = {
   },
 
   // Export/Import
-  exportProfile(profile) {
+  // Version 2 holds any number of profiles; version 1 (single profile) is still accepted on import
+  exportProfiles(profiles) {
     return {
-      version: 1,
-      type: 'reddit-keyword-filter-profile',
-      profile: {
+      version: 2,
+      type: 'reddit-keyword-filter-profiles',
+      profiles: profiles.map(profile => ({
         name: profile.name,
         keywords: profile.keywords
-      },
+      })),
       exportedAt: new Date().toISOString()
     };
   },
 
-  validateImportedProfile(data) {
+  // Read exported JSON into a list of { name, keywords }
+  parseImportData(data) {
     if (!data || typeof data !== 'object') {
       return { valid: false, error: 'Invalid JSON' };
     }
-    if (data.type !== 'reddit-keyword-filter-profile') {
-      return { valid: false, error: 'Not a valid profile' };
+
+    let entries;
+    if (data.type === 'reddit-keyword-filter-profiles') {
+      if (data.version !== 2) return { valid: false, error: 'Unknown version' };
+      entries = data.profiles;
+    } else if (data.type === 'reddit-keyword-filter-profile') {
+      if (data.version !== 1) return { valid: false, error: 'Unknown version' };
+      entries = [data.profile];
+    } else {
+      return { valid: false, error: 'Not a valid profile export' };
     }
-    if (data.version !== 1) {
-      return { valid: false, error: 'Unknown version' };
+
+    if (!Array.isArray(entries)) {
+      return { valid: false, error: 'Missing profiles' };
     }
-    if (!data.profile?.name || typeof data.profile.name !== 'string') {
-      return { valid: false, error: 'Missing profile name' };
+
+    const profiles = entries
+      .filter(p => p && typeof p.name === 'string' && Array.isArray(p.keywords))
+      .map(p => ({
+        name: p.name.trim() || 'Imported Profile',
+        keywords: this.sanitizeKeywords(p.keywords)
+      }));
+
+    if (profiles.length === 0) {
+      return { valid: false, error: 'No profiles found' };
     }
-    if (!Array.isArray(data.profile?.keywords)) {
-      return { valid: false, error: 'Missing keywords' };
-    }
-    // Validate each keyword in the array
-    for (let i = 0; i < data.profile.keywords.length; i++) {
-      const keyword = data.profile.keywords[i];
-      if (typeof keyword !== 'string') {
-        return { valid: false, error: `Invalid keyword at index ${i}: must be a string` };
-      }
-      if (keyword.length > this.MAX_KEYWORD_LENGTH) {
-        return { valid: false, error: `Keyword at index ${i} exceeds maximum length of ${this.MAX_KEYWORD_LENGTH}` };
-      }
-    }
-    return { valid: true };
+    return { valid: true, profiles };
   },
 
-  async importProfile(jsonData) {
+  // Add parsed profiles in a single storage write; imported profiles start disabled
+  async importProfiles(importedProfiles) {
     try {
-      const validation = this.validateImportedProfile(jsonData);
-      if (!validation.valid) {
-        return { success: false, error: validation.error };
-      }
+      const profiles = await this.getProfiles();
+      const now = Date.now();
 
-      // Filter and sanitize keywords
-      const validKeywords = jsonData.profile.keywords
-        .map(k => this.validateKeyword(k))
-        .filter(result => result.valid)
-        .map(result => result.keyword);
+      const created = importedProfiles.map((imported, index) => {
+        const profile = {
+          id: this.generateUUID(),
+          name: this.getUniqueName(imported.name, profiles),
+          keywords: this.sanitizeKeywords(imported.keywords),
+          enabled: false,
+          // Keep the export's order in the newest-first profile list
+          createdAt: now - index
+        };
+        profiles[profile.id] = profile;
+        return profile;
+      });
 
-      const profile = await this.createProfile(
-        jsonData.profile.name,
-        validKeywords
-      );
-
-      if (!profile) {
-        return { success: false, error: 'Could not create profile' };
-      }
-
-      return { success: true, profile };
+      await browser.storage.local.set({ [this.PROFILES_KEY]: profiles });
+      return { success: true, profiles: created };
     } catch (error) {
-      console.error('StorageHelper: Error importing profile', error);
+      console.error('StorageHelper: Error importing profiles', error);
       return { success: false, error: 'Import error' };
     }
   },

@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -28,9 +29,8 @@
         <button id="add-profile-btn" type="button">
           <span class="btn-icon">+</span> New Profile
         </button>
-        <button id="import-profile-btn" type="button" class="secondary">
-          Import Profile
-        </button>
+        <button id="import-profile-btn" type="button" class="secondary">Import</button>
+        <button id="export-profiles-btn" type="button" class="secondary">Export</button>
       </div>
 
       <div class="stats-section">
@@ -61,7 +61,7 @@
       <div class="edit-header">
         <button id="back-btn" type="button" class="icon-btn" title="Back">&larr;</button>
         <input type="text" id="profile-name-input" placeholder="Profile name">
-        <button id="export-profile-btn" type="button" class="icon-btn" title="Export to clipboard">&#x2197;</button>
+        <button id="export-profile-btn" type="button" class="icon-btn" title="Export profile">&#x2197;</button>
       </div>
 
       <div class="profile-toggle-row">
@@ -101,14 +101,61 @@
   <div id="import-modal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Import Profile</h3>
+        <h3>Import Profiles</h3>
         <button id="close-modal-btn" type="button" class="icon-btn">&times;</button>
       </div>
-      <p class="modal-description">Paste the exported profile JSON below:</p>
-      <textarea id="import-textarea" placeholder='{"type":"reddit-keyword-filter-profile",...}'></textarea>
+
+      <!-- Step 1: paste exported JSON -->
+      <div id="import-paste-step">
+        <p class="modal-description">Paste exported profiles below:</p>
+        <textarea id="import-textarea" placeholder='{"type":"reddit-keyword-filter-profiles",...}'></textarea>
+        <div class="modal-actions">
+          <button id="cancel-import-btn" type="button" class="secondary">Cancel</button>
+          <button id="next-import-btn" type="button" class="primary">Next</button>
+        </div>
+      </div>
+
+      <!-- Step 2: choose which profiles to import -->
+      <div id="import-select-step" class="hidden">
+        <p class="modal-description">Choose the profiles to import. Imported profiles start turned off.</p>
+        <label class="select-all">
+          <input type="checkbox" id="import-select-all"> Select all
+        </label>
+        <ul id="import-list" class="selection-list"></ul>
+        <div class="modal-actions">
+          <button id="back-import-btn" type="button" class="secondary">Back</button>
+          <button id="confirm-import-btn" type="button" class="primary">Import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation dialog -->
+  <div id="confirm-modal" class="modal hidden">
+    <div class="modal-content">
+      <p id="confirm-message" class="confirm-message"></p>
       <div class="modal-actions">
-        <button id="cancel-import-btn" type="button" class="secondary">Cancel</button>
-        <button id="confirm-import-btn" type="button">Import</button>
+        <button id="confirm-cancel-btn" type="button" class="secondary">Cancel</button>
+        <button id="confirm-ok-btn" type="button" class="danger">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export modal -->
+  <div id="export-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Export Profiles</h3>
+        <button id="close-export-btn" type="button" class="icon-btn">&times;</button>
+      </div>
+      <p class="modal-description">Choose the profiles to copy to your clipboard:</p>
+      <label class="select-all">
+        <input type="checkbox" id="export-select-all"> Select all
+      </label>
+      <ul id="export-list" class="selection-list"></ul>
+      <div class="modal-actions">
+        <button id="cancel-export-btn" type="button" class="secondary">Cancel</button>
+        <button id="confirm-export-btn" type="button" class="primary">Copy</button>
       </div>
     </div>
   </div>
