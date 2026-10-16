@@ -88,11 +88,15 @@
     return url?.match(POST_ID_PATTERN)?.[1].toLowerCase() ?? null;
   }
 
-  // Decide whether a post should be hidden. The post you have opened is never
-  // hidden on its own page, otherwise you'd see its comments with no post above them.
+  // Decide whether a post should be hidden. On a post's own page, only other posts
+  // we can positively identify are hidden, never the opened post itself or parts
+  // of the page we can't tell apart from it.
   function shouldHide(title, permalink) {
     const currentPostId = getPostId(window.location.pathname);
-    if (currentPostId && getPostId(permalink) === currentPostId) return false;
+    if (currentPostId) {
+      const postId = getPostId(permalink);
+      if (!postId || postId === currentPostId) return false;
+    }
     return containsKeyword(title);
   }
 

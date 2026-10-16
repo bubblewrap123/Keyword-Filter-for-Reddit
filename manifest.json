@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Keyword Filter for Reddit",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Hide Reddit posts whose titles contain keywords you choose",
 
   "browser_specific_settings": {

@@ -29,6 +29,8 @@ function filterNewRedditPosts(shouldHide, hidePost) {
   testIdPosts.forEach(post => {
     post.setAttribute('data-filtered', 'true');
 
+    if (isInsidePostOrComment(post)) return;
+
     // Title usually in h3 or specific data-testid
     const titleElement = post.querySelector('h3, [data-testid="post-title"]');
     const title = titleElement?.textContent || '';
@@ -49,6 +51,7 @@ function filterNewRedditPosts(shouldHide, hidePost) {
 
     // Already handled above via the post element inside it
     if (post.querySelector('shreddit-post, [data-testid="post-container"]')) return;
+    if (isInsidePostOrComment(post)) return;
 
     // Prefer a real title element; a comments link is only a fallback
     const link = post.querySelector('a[href*="/comments/"]');
@@ -61,4 +64,11 @@ function filterNewRedditPosts(shouldHide, hidePost) {
   });
 
   return blockedCount;
+}
+
+// Content inside a post body or a comment (headings, embeds, links) is never a post itself
+function isInsidePostOrComment(element) {
+  return !!element.parentElement?.closest(
+    'shreddit-post, shreddit-comment, [data-testid="post-container"], [data-testid="comment"]'
+  );
 }
